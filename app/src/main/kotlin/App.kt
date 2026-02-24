@@ -39,8 +39,8 @@ class PasswordDatabase(
         for ((k, v) in entries) {
             // This is necessary because the key and/or password could contain
             // the ':' symbol, and we don't want malicious users to break this.
-            val k_b64 = Base64.getEncoder().encode(k.toByteArray())
-            val v_v64 = Base64.getEncoder().encode(v.toByteArray())
+            val k_b64 = Base64.getEncoder().encodeToString(k.toByteArray())
+            val v_v64 = Base64.getEncoder().encodeToString(v.toByteArray())
             builder.append("$k_b64:$v_v64\n")
         }
 
@@ -141,30 +141,20 @@ fun main(args: Array<String>) {
     // which is essentially the same thing as a Zig-style switch, but it also
     // allows for some limited pattern matching capabilities.
     when (args[0]) {
-        "--init" -> {
-            initialize_db(db_path, console)
-        }
-
-        "--list" -> {
-            list_services(db_path, console)
-        }
-
-        "--set" -> {
-            add_password(db_path, console)
-        }
-
-        "--get" -> {
-            get_password(db_path, console)
-        }
-
-        "--help" -> {
-            println("Usage:")
-            println("  --init - Initializes a new password database")
-            println("  --list - Lists services stored in the database")
-            println("  --set  - Sets a password for a service")
-            println("  --help - Prints this usage menu")
-        }
+        "--init" -> initialize_db(db_path, console)
+        "--list" -> list_services(db_path, console)
+        "--set" -> set_password(db_path, console)
+        "--get" -> get_password(db_path, console)
+        "--help" -> print_usage()
     }
+}
+
+fun print_usage() {
+    println("Usage:")
+    println("  --init - Initializes a new password database")
+    println("  --list - Lists services stored in the database")
+    println("  --set  - Sets a password for a service")
+    println("  --help - Prints this usage menu")
 }
 
 // List all services that have passwords stored in the database - we will not
@@ -177,23 +167,24 @@ fun list_services(
     // The "elvis" operator branches on the monad for if it contains some value
     // or "null" - the LHS is passed on if not null, otherwise the right hand
     // expression is evaluated - here we simply return.
-    val db = load_db(db_path, console) ?: return
+    val (db, _, _) = load_db(db_path, console) ?: return
 
     println("Passwords are stored for these services:")
     for (service in db.list()) {
         print("\"$service\", ")
     }
+    println()
 }
 
-// Add a new password to the password database - db_path is the path to the
+// Sets a new password to the password database - db_path is the path to the
 // password database file, console is the device to read passwords from.
-fun add_password(
+fun set_password(
     db_path: String,
     console: Console,
 ) {
     // Load the database, returning if it either does not exist,
     // or if we do not have a correct master password input.
-    val db = load_db(db_path, console) ?: return
+    val (db, salt, key) = load_db(db_path, console) ?: return
 
     print("Enter service name: ")
     val service = readln()
@@ -203,6 +194,7 @@ fun add_password(
     val service_pw = console.readPassword(prompt)
     db.set(service, String(service_pw))
 
+    save_db(db_path, db, salt, key)
     println("Password for \"$service\" has been stored.")
 }
 
@@ -215,7 +207,7 @@ fun get_password(
     // The "elvis" operator branches on the monad for if it contains some value
     // or "null" - the LHS is passed on if not null, otherwise the right hand
     // expression is evaluated - here we simply return.
-    val db = load_db(db_path, console) ?: return
+    val (db, _, _) = load_db(db_path, console) ?: return
 
     print("Enter service name: ")
     val service = readln()
@@ -283,7 +275,7 @@ fun initialize_db(
 fun load_db(
     db_path: String,
     console: Console,
-): PasswordDatabase? {
+): Triple<PasswordDatabase, ByteArray, SecretKeySpec>? {
     // File for the password database
     val db_file = File(db_path)
 
@@ -325,7 +317,8 @@ fun load_db(
         return null
     }
 
-    return PasswordDatabase.deserialize(String(decrypted))
+    val db = PasswordDatabase.deserialize(String(decrypted))
+    return Triple(db, salt, key)
 }
 
 // Save the password database to a file; db_path is the path to the password
