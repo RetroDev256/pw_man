@@ -1,6 +1,9 @@
 # Kotlin Password Manager
 
-Add a description of your project here.
+Ultra basic password manager written in kotlin for a class project.
+The project keeps a password encrypted database serialized to disk.
+The project should not be used in replacement of a proven password manager.
+The project has code which is (imo) easy to reason about and understand.
 
 ## Instructions for Build and Use
 
